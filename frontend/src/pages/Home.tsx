@@ -1,89 +1,101 @@
-import React from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import {
-  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
-} from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import PageLayout from '../components/PageLayout';
 import StatCard from '../components/StatCard';
-import MoodHistoryItem from '../components/MoodHistory';
 import SectionTitle from '../components/SectionTitle';
-import { moodHistory, barChartData } from '../services/mockData';
-
-const emotionThumbs = [
-  { label: 'Angry', emoji: '😠' },
-  { label: 'Fear', emoji: '😨' },
-  { label: 'Happy', emoji: '😄' },
-  { label: 'Sad', emoji: '😢' },
-];
+import MoodHistoryItem from '../components/MoodHistoryItem';
+import { useWebSocket } from '../hooks/useWebSocket';
+import { fetchDashboardStats, fetchHistory } from '../services';
+import { DashboardStats, MoodEntry } from '../types';
+import { EMOTION_META } from '../utils/emotionMeta';
 
 const Home: React.FC = () => {
   const navigate = useNavigate();
+  const [stats, setStats] = useState<DashboardStats | null>(null);
+  const [recent, setRecent] = useState<MoodEntry[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const loadData = useCallback(async () => {
+    const [statsRes, histRes] = await Promise.all([
+      fetchDashboardStats(),
+      fetchHistory({ limit: 3, filter: 'all' }),
+    ]);
+    if (statsRes.success && statsRes.data) setStats(statsRes.data);
+    if (histRes.success && histRes.data) setRecent(histRes.data.entries);
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { loadData(); }, [loadData]);
+
+  // Realtime update via WebSocket
+  useWebSocket({
+    onStatsUpdate: (data) => setStats(data),
+    onDetection: () => {
+      fetchHistory({ limit: 3, filter: 'all' }).then(r => {
+        if (r.success && r.data) setRecent(r.data.entries);
+      });
+    },
+  });
+
+  const chartData = stats?.last7DaysDistribution.map(d => ({
+    name: d.emotion,
+    count: d.count,
+    color: EMOTION_META[d.emotion].color,
+  })) || [];
 
   return (
     <PageLayout>
-      {/* Hero Section */}
+      {/* Hero */}
       <div style={{
-        display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 32,
-        background: '#eff6ff', borderRadius: 16, padding: '40px 32px',
-        marginBottom: 40, alignItems: 'center',
-      }}>
+        display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24,
+        background: 'var(--bg-hero)', borderRadius: 16,
+        padding: '32px 28px', marginBottom: 36,
+      }} className="grid-2">
         <div>
-          <h1 style={{ fontSize: 36, fontWeight: 800, color: '#111827', lineHeight: 1.2, marginBottom: 12 }}>
+          <h1 style={{ fontSize: 32, fontWeight: 800, color: 'var(--text-primary)', lineHeight: 1.2, marginBottom: 10 }}>
             Discover Your Mood<br />from Your Facial Expression
           </h1>
-          <p style={{ color: '#6b7280', fontSize: 16, marginBottom: 24 }}>
+          <p style={{ color: 'var(--text-secondary)', fontSize: 15, marginBottom: 22 }}>
             Detect your current emotion in real-time using your webcam.
           </p>
-          <button
-            onClick={() => navigate('/detection')}
-            style={{
-              background: '#3b82f6', color: '#fff', border: 'none',
-              padding: '12px 28px', borderRadius: 8, fontWeight: 600,
-              fontSize: 15, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8,
-            }}
-          >
-            ▶ Start Detection
-          </button>
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+            <button className="btn-primary" onClick={() => navigate('/detection')}>▶ Start Detection</button>
+            <button className="btn-secondary" onClick={() => navigate('/upload')}>📂 Upload Image</button>
+          </div>
 
-          {/* Emotion Thumbnails */}
-          <div style={{ display: 'flex', gap: 12, marginTop: 24 }}>
-            {emotionThumbs.map(e => (
-              <div key={e.label} style={{ textAlign: 'center' }}>
+          <div style={{ display: 'flex', gap: 10, marginTop: 20, flexWrap: 'wrap' }}>
+            {Object.values(EMOTION_META).map(m => (
+              <div key={m.label} style={{ textAlign: 'center' }}>
                 <div style={{
-                  width: 80, height: 64, background: '#e5e7eb',
+                  width: 64, height: 52, background: 'var(--border)',
                   borderRadius: 8, display: 'flex', alignItems: 'center',
-                  justifyContent: 'center', fontSize: 24, marginBottom: 4,
-                }}>
-                  {e.emoji}
-                </div>
-                <span style={{ fontSize: 12, color: '#6b7280' }}>{e.label}</span>
+                  justifyContent: 'center', fontSize: 22, marginBottom: 3,
+                }}>{m.emoji}</div>
+                <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>{m.label}</span>
               </div>
             ))}
           </div>
         </div>
 
-        {/* Camera Feed */}
-        <div style={{ background: '#111827', borderRadius: 12, padding: 16 }}>
+        {/* Camera Preview */}
+        <div style={{ background: 'var(--bg-camera)', borderRadius: 12, padding: 16 }}>
           <div style={{
-            border: '2px solid #3b82f6', borderRadius: 8,
-            height: 200, display: 'flex', alignItems: 'center',
-            justifyContent: 'center', color: '#9ca3af', fontSize: 16, marginBottom: 12,
+            border: '2px solid var(--brand)', borderRadius: 8,
+            height: 180, display: 'flex', alignItems: 'center',
+            justifyContent: 'center', color: '#6b7280', fontSize: 14,
+            marginBottom: 10,
           }}>
             [ Camera Feed ]
           </div>
-          <div style={{ textAlign: 'center', color: '#fff', marginBottom: 12, fontSize: 15 }}>
-            😄 Happy (98%)
-          </div>
+          {stats?.todayDominantMood && (
+            <div style={{ textAlign: 'center', color: '#fff', marginBottom: 10, fontSize: 14 }}>
+              {EMOTION_META[stats.todayDominantMood].emoji} {stats.todayDominantMood} ({stats.todayDominantPercent}%)
+            </div>
+          )}
           <div style={{ textAlign: 'center' }}>
-            <button
-              onClick={() => navigate('/detection')}
-              style={{
-                padding: '8px 20px', border: '1px solid #6b7280',
-                borderRadius: 6, background: '#1f2937', color: '#fff',
-                fontSize: 14, cursor: 'pointer',
-              }}
-            >
-              Stop Detection
+            <button className="btn-secondary" style={{ fontSize: 13 }} onClick={() => navigate('/detection')}>
+              Open Camera
             </button>
           </div>
         </div>
@@ -92,53 +104,52 @@ const Home: React.FC = () => {
       {/* Stats Overview */}
       <SectionTitle title="Your Mood Statistics Overview" />
 
-      <div style={{
-        background: '#fff', border: '1px solid #e5e7eb',
-        borderRadius: 12, padding: 20, marginBottom: 20,
-      }}>
-        <div style={{ fontSize: 13, color: '#6b7280', marginBottom: 12 }}>Emotion Distribution (Last 7 Days)</div>
-        <ResponsiveContainer width="100%" height={180}>
-          <BarChart data={barChartData}>
-            <XAxis dataKey="name" tick={{ fontSize: 12 }} />
-            <YAxis hide />
-            <Tooltip />
-            <Bar dataKey="thisWeek" fill="#ef4444" name="This Week" radius={[3, 3, 0, 0]}>
-              {barChartData.map((entry, index) => (
-                <rect key={index} fill={entry.color} />
-              ))}
-            </Bar>
-            <Bar dataKey="lastWeek" fill="#fca5a5" name="Last Week" radius={[3, 3, 0, 0]} />
-          </BarChart>
-        </ResponsiveContainer>
-      </div>
+      {loading ? (
+        <div style={{ textAlign: 'center', padding: 40, color: 'var(--text-muted)' }}>Loading stats...</div>
+      ) : (
+        <>
+          <div className="card" style={{ padding: '16px 20px', marginBottom: 16 }}>
+            <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 12 }}>
+              Emotion Distribution (Last 7 Days)
+            </div>
+            <ResponsiveContainer width="100%" height={160}>
+              <BarChart data={chartData}>
+                <XAxis dataKey="name" tick={{ fontSize: 11, fill: 'var(--text-secondary)' }} axisLine={false} tickLine={false} />
+                <YAxis hide />
+                <Tooltip
+                  contentStyle={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8 }}
+                  labelStyle={{ color: 'var(--text-primary)' }}
+                />
+                <Bar dataKey="count" radius={[4, 4, 0, 0]}>
+                  {chartData.map((d, i) => <Cell key={i} fill={d.color} />)}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
 
-      <div style={{ display: 'flex', gap: 16, marginBottom: 40 }}>
-        <StatCard emoji="🔵" count={305} label="Total Detections" isBlue />
-        <StatCard emoji="😄" count={185} label="Happy" />
-        <StatCard emoji="😢" count={72} label="Sad" />
-        <StatCard emoji="😠" count={28} label="Angry" />
-      </div>
+          <div style={{ display: 'flex', gap: 12, marginBottom: 36, flexWrap: 'wrap' }} className="grid-4">
+            <StatCard emoji="" count={stats?.totalDetections || 0} label="Total Detections" isBlue />
+            <StatCard emoji="😄" count={stats?.emotionCounts.Happy || 0} label="Happy" />
+            <StatCard emoji="😢" count={stats?.emotionCounts.Sad || 0} label="Sad" />
+            <StatCard emoji="😠" count={stats?.emotionCounts.Angry || 0} label="Angry" />
+          </div>
+        </>
+      )}
 
       {/* Recent History */}
       <SectionTitle title="Recent Mood History" />
-      {moodHistory.slice(0, 3).map(entry => (
-        <MoodHistoryItem key={entry.id} entry={entry} showDate={false} />
-      ))}
-      <div style={{ display: 'flex', gap: 12, marginTop: 8 }}>
-        {['View More', 'View More', 'View More'].map((label, i) => (
-          <button
-            key={i}
-            onClick={() => navigate('/history')}
-            style={{
-              flex: 1, padding: '8px', border: '1px solid #d1d5db',
-              borderRadius: 6, background: '#fff', color: '#374151',
-              fontSize: 13, cursor: 'pointer',
-            }}
-          >
-            {label}
+      {recent.length === 0 ? (
+        <div style={{ textAlign: 'center', padding: 32, color: 'var(--text-muted)' }}>
+          No detection history yet. <button className="btn-primary" style={{ marginLeft: 8 }} onClick={() => navigate('/detection')}>Start Detection</button>
+        </div>
+      ) : (
+        <>
+          {recent.map(e => <MoodHistoryItem key={e._id} entry={e} />)}
+          <button className="btn-secondary" style={{ width: '100%', justifyContent: 'center', marginTop: 8 }} onClick={() => navigate('/history')}>
+            View All History
           </button>
-        ))}
-      </div>
+        </>
+      )}
     </PageLayout>
   );
 };

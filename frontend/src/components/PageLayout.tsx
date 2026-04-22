@@ -1,15 +1,13 @@
 import React from 'react';
 import Navbar from './Navbar';
 
-interface PageLayoutProps {
-  children: React.ReactNode;
-}
+interface Props { children: React.ReactNode; }
 
-const PageLayout: React.FC<PageLayoutProps> = ({ children }) => (
-  <div style={{ minHeight: '100vh', background: '#f3f4f6', fontFamily: 'system-ui, -apple-system, sans-serif' }}>
+const PageLayout: React.FC<Props> = ({ children }) => (
+  <div style={{ minHeight: '100vh', background: 'var(--bg)', color: 'var(--text-primary)' }}>
     <Navbar />
     <div style={{ paddingTop: 56 }}>
-      <div style={{ maxWidth: 1200, margin: '0 auto', padding: '32px 24px' }}>
+      <div style={{ maxWidth: 1200, margin: '0 auto', padding: '28px 16px' }}>
         {children}
       </div>
     </div>
