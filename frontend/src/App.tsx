@@ -1,29 +1,42 @@
 import React from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { ThemeProvider } from './contexts/ThemeContext';
-import Home from './pages/Home';
-import Detection from './pages/Detection';
-import Upload from './pages/Upload';
-import Result from './pages/Result';
-import History from './pages/History';
+import { AuthProvider } from './contexts/AuthContext';
+import ProtectedRoute from './components/ProtectedRoute';
+
+import Landing      from './pages/Landing';
+import Login        from './pages/Login';
+import Register     from './pages/Register';
+import Dashboard    from './pages/Dashboard';
+import Detection    from './pages/Detection';
+import Upload       from './pages/Upload';
+import Result       from './pages/Result';
+import History      from './pages/History';
 import Recommendation from './pages/Recommendation';
-import Dashboard from './pages/Dashboard';
-import Login from './pages/Login';
 
 const App: React.FC = () => (
   <ThemeProvider>
-    <BrowserRouter>
-      <Routes>
-        <Route path="/" element={<Home />} />
-        <Route path="/detection" element={<Detection />} />
-        <Route path="/upload" element={<Upload />} />
-        <Route path="/result/:id" element={<Result />} />
-        <Route path="/history" element={<History />} />
-        <Route path="/recommendation/:id" element={<Recommendation />} />
-        <Route path="/dashboard" element={<Dashboard />} />
-        <Route path="/login" element={<Login />} />
-      </Routes>
-    </BrowserRouter>
+    <AuthProvider>
+      <BrowserRouter>
+        <Routes>
+          {/* ─── Public ─── */}
+          <Route path="/"         element={<Landing />} />
+          <Route path="/login"    element={<Login />} />
+          <Route path="/register" element={<Register />} />
+
+          {/* ─── Protected — tampil prompt login jika belum auth ─── */}
+          <Route path="/dashboard"          element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+          <Route path="/detection"          element={<ProtectedRoute><Detection /></ProtectedRoute>} />
+          <Route path="/upload"             element={<ProtectedRoute><Upload /></ProtectedRoute>} />
+          <Route path="/result/:id"         element={<ProtectedRoute><Result /></ProtectedRoute>} />
+          <Route path="/history"            element={<ProtectedRoute><History /></ProtectedRoute>} />
+          <Route path="/recommendation/:id" element={<ProtectedRoute><Recommendation /></ProtectedRoute>} />
+
+          {/* fallback */}
+          <Route path="*" element={<Landing />} />
+        </Routes>
+      </BrowserRouter>
+    </AuthProvider>
   </ThemeProvider>
 );
 

@@ -1,33 +1,17 @@
 import 'dotenv/config';
+import http from 'http';
 import app from './app';
 import connectDB from './config/db';
+import { initWebSocket } from './config/websocket';
 
 const PORT = parseInt(process.env.PORT || '5000', 10);
 
-const startServer = async (): Promise<void> => {
+(async () => {
   await connectDB();
-
-  app.listen(PORT, () => {
-    console.log('');
-    console.log('🎭 ================================');
-    console.log(`🚀  Mood Detector API`);
-    console.log(`📡  Port     : ${PORT}`);
-    console.log(`🌍  Mode     : ${process.env.NODE_ENV || 'development'}`);
-    console.log('🎭 ================================');
-    console.log('');
-    console.log('📋  Endpoints:');
-    console.log(`    GET  http://localhost:${PORT}/api/health`);
-    console.log(`    POST http://localhost:${PORT}/api/detect/camera`);
-    console.log(`    POST http://localhost:${PORT}/api/detect/upload`);
-    console.log(`    GET  http://localhost:${PORT}/api/history`);
-    console.log(`    GET  http://localhost:${PORT}/api/history/:id`);
-    console.log(`    DELETE http://localhost:${PORT}/api/history/:id`);
-    console.log(`    GET  http://localhost:${PORT}/api/dashboard/stats`);
-    console.log('');
+  const server = http.createServer(app);
+  initWebSocket(server);
+  server.listen(PORT, () => {
+    console.log(`\n🚀 Server: http://localhost:${PORT}`);
+    console.log(`🔌 WS:     ws://localhost:${PORT}/ws\n`);
   });
-};
-
-startServer().catch((error) => {
-  console.error('❌ Failed to start server:', error);
-  process.exit(1);
-});
+})();

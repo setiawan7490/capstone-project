@@ -1,70 +1,50 @@
 import { useEffect, useRef, useCallback } from 'react';
 import { DashboardStats, MoodEntry } from '../types';
 
-type WSEvent = 'detection' | 'stats_update' | 'history_update' | 'ping';
-
-interface WSMessage {
-  event: WSEvent;
-  data: unknown;
-  timestamp: string;
-}
-
-interface UseWebSocketOptions {
+interface Options {
   onDetection?: (data: MoodEntry) => void;
   onStatsUpdate?: (data: DashboardStats) => void;
   onHistoryUpdate?: (data: { action: string; id: string }) => void;
 }
 
-const WS_URL = `ws://${window.location.hostname}:5000/ws`;
-
-export function useWebSocket(options: UseWebSocketOptions) {
+export function useWebSocket(options: Options) {
   const wsRef = useRef<WebSocket | null>(null);
-  const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const optionsRef = useRef(options);
-  optionsRef.current = options;
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const optsRef = useRef(options);
+  optsRef.current = options;
 
   const connect = useCallback(() => {
     try {
-      const ws = new WebSocket(WS_URL);
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const host = window.location.hostname;
+      // Di dev (port 5173) proxy ke backend port 5000, di production pakai port yang sama
+      const isDev = window.location.port === '5173';
+      const port = isDev ? '5000' : window.location.port;
+      const url = `${protocol}//${host}:${port}/ws`;
+
+      const ws = new WebSocket(url);
       wsRef.current = ws;
 
-      ws.onopen = () => console.log('WS connected');
-
-      ws.onmessage = (event) => {
+      ws.onmessage = (ev) => {
         try {
-          const msg: WSMessage = JSON.parse(event.data);
-          if (msg.event === 'ping') return;
-          if (msg.event === 'detection' && optionsRef.current.onDetection) {
-            optionsRef.current.onDetection(msg.data as MoodEntry);
-          }
-          if (msg.event === 'stats_update' && optionsRef.current.onStatsUpdate) {
-            optionsRef.current.onStatsUpdate(msg.data as DashboardStats);
-          }
-          if (msg.event === 'history_update' && optionsRef.current.onHistoryUpdate) {
-            optionsRef.current.onHistoryUpdate(msg.data as { action: string; id: string });
-          }
-        } catch (e) {
-          console.warn('WS parse error', e);
-        }
+          const msg = JSON.parse(ev.data);
+          if (msg.event === 'detection' && optsRef.current.onDetection) optsRef.current.onDetection(msg.data);
+          if (msg.event === 'stats_update' && optsRef.current.onStatsUpdate) optsRef.current.onStatsUpdate(msg.data);
+          if (msg.event === 'history_update' && optsRef.current.onHistoryUpdate) optsRef.current.onHistoryUpdate(msg.data);
+        } catch {}
       };
 
-      ws.onclose = () => {
-        console.log('WS disconnected, reconnecting in 3s...');
-        reconnectTimer.current = setTimeout(connect, 3000);
-      };
-
-      ws.onerror = () => {
-        ws.close();
-      };
-    } catch (e) {
-      reconnectTimer.current = setTimeout(connect, 3000);
+      ws.onclose = () => { timerRef.current = setTimeout(connect, 3000); };
+      ws.onerror = () => { ws.close(); };
+    } catch {
+      timerRef.current = setTimeout(connect, 3000);
     }
   }, []);
 
   useEffect(() => {
     connect();
     return () => {
-      if (reconnectTimer.current) clearTimeout(reconnectTimer.current);
+      if (timerRef.current) clearTimeout(timerRef.current);
       wsRef.current?.close();
     };
   }, [connect]);

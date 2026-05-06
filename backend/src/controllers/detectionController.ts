@@ -1,109 +1,81 @@
 import { Request, Response } from 'express';
-import { mockDetectEmotion } from '../services/emotionService';
-import { saveMoodEntry, getDashboardStats } from '../services/historyService';
-import { ApiResponse, DetectionResult } from '../types';
-import { broadcast } from '../config/websocket';
 import fs from 'fs';
+import { detectEmotion } from '../services/emotionService';
+import { saveMoodEntry, getDashboardStats, checkDailyLimit } from '../services/historyService';
+import { broadcast } from '../config/websocket';
 
-/**
- * POST /api/detect/camera
- */
-export const detectFromCamera = async (
-  req: Request,
-  res: Response
-): Promise<void> => {
-  try {
-    const result: DetectionResult = await mockDetectEmotion();
-
-    const saved = await saveMoodEntry(result, 'camera');
-
-    // 🔥 REALTIME BROADCAST DETECTION
-    broadcast('detection', {
-      entryId: saved._id?.toString(),
-      dominantEmotion: result.dominantEmotion,
-      dominantConfidence: result.dominantConfidence,
-      allEmotions: result.allEmotions,
-      detectedAt: result.detectedAt,
-      source: 'camera',
+// Helper — cek limit sebelum deteksi
+async function enforceLimit(userId: string, res: Response): Promise<boolean> {
+  const limit = await checkDailyLimit(userId);
+  if (!limit.allowed) {
+    res.status(429).json({
+      success: false,
+      message: `Batas deteksi harian tercapai (50x per 24 jam). Sisa: 0. Coba lagi nanti.`,
+      data: { limit: 50, used: limit.used, remaining: 0 },
     });
+    return false;
+  }
+  return true;
+}
 
-    // 🔥 REALTIME UPDATE STATS
-    const stats = await getDashboardStats();
+export const detectFromCamera = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const userId = req.user!.userId;
+
+    // ── Cek limit di backend ──
+    if (!(await enforceLimit(userId, res))) return;
+
+    const { imageBase64 } = req.body;
+    const result  = await detectEmotion(imageBase64);
+    const saved   = await saveMoodEntry(result, userId, 'camera');
+    const stats   = await getDashboardStats(userId);
+
+    broadcast('detection',    { ...result, entryId: saved._id });
     broadcast('stats_update', stats);
 
-    const response: ApiResponse = {
+    res.json({
       success: true,
-      message: 'Emotion detected successfully',
+      message: 'Detected',
       data: {
         detection: result,
-        entryId: saved._id?.toString() || '',
+        entryId:   saved._id,
+        dailyLimit: stats.dailyLimit,
       },
-    };
-
-    res.status(200).json(response);
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: 'Detection failed',
-      error: error instanceof Error ? error.message : 'Unknown error',
-    } as ApiResponse);
+    });
+  } catch (e) {
+    res.status(500).json({ success: false, message: 'Detection failed', error: (e as Error).message });
   }
 };
 
-/**
- * POST /api/detect/upload
- */
-export const detectFromUpload = async (
-  req: Request,
-  res: Response
-): Promise<void> => {
+export const detectFromUpload = async (req: Request, res: Response): Promise<void> => {
   try {
-    if (!req.file) {
-      res.status(400).json({
-        success: false,
-        message: 'No image file provided',
-      } as ApiResponse);
-      return;
-    }
+    const userId = req.user!.userId;
 
-    const imageBuffer = fs.readFileSync(req.file.path);
-    const result: DetectionResult = await mockDetectEmotion(imageBuffer);
+    // ── Cek limit di backend ──
+    if (!(await enforceLimit(userId, res))) return;
 
-    const imageUrl = `/uploads/${req.file.filename}`;
+    if (!req.file) { res.status(400).json({ success: false, message: 'No image provided' }); return; }
 
-    const saved = await saveMoodEntry(result, 'upload', imageUrl);
+    const imageBase64 = fs.readFileSync(req.file.path).toString('base64');
+    const result      = await detectEmotion(imageBase64);
+    const imageUrl    = `/uploads/${req.file.filename}`;
+    const saved       = await saveMoodEntry(result, userId, 'upload', imageUrl);
+    const stats       = await getDashboardStats(userId);
 
-    // 🔥 REALTIME BROADCAST DETECTION
-    broadcast('detection', {
-      entryId: saved._id?.toString(),
-      dominantEmotion: result.dominantEmotion,
-      dominantConfidence: result.dominantConfidence,
-      allEmotions: result.allEmotions,
-      detectedAt: result.detectedAt,
-      source: 'upload',
-      imageUrl,
-    });
-
-    // 🔥 REALTIME UPDATE STATS
-    const stats = await getDashboardStats();
+    broadcast('detection',    { ...result, entryId: saved._id, imageUrl });
     broadcast('stats_update', stats);
 
-    const response: ApiResponse = {
+    res.json({
       success: true,
-      message: 'Emotion detected from uploaded image',
+      message: 'Detected from image',
       data: {
         detection: result,
-        entryId: saved._id?.toString() || '',
+        entryId:   saved._id,
         imageUrl,
+        dailyLimit: stats.dailyLimit,
       },
-    };
-
-    res.status(200).json(response);
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: 'Upload detection failed',
-      error: error instanceof Error ? error.message : 'Unknown error',
-    } as ApiResponse);
+    });
+  } catch (e) {
+    res.status(500).json({ success: false, message: 'Upload detection failed', error: (e as Error).message });
   }
 };

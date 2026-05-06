@@ -1,70 +1,49 @@
 import { EmotionType, EmotionScore, DetectionResult } from '../types';
+import fetch from 'node-fetch';
 
-const ALL_EMOTIONS: EmotionType[] = [
-  'Happy', 'Sad', 'Angry', 'Fear', 'Surprise', 'Neutral',
-];
+const ALL: EmotionType[] = ['Angry','Fear','Happy','Sad','Surprise','Neutral'];
 
-/**
- * Menghasilkan skor emosi random yang realistis.
- * Satu emosi akan dominan (60–98%), sisanya dibagi sisa persennya.
- */
-function generateRealisticScores(): EmotionScore[] {
-  // Pilih emosi dominan secara random (weight lebih ke Happy & Neutral)
-  const weights = [0.30, 0.20, 0.10, 0.10, 0.15, 0.15]; // urutan ALL_EMOTIONS
-  const rand = Math.random();
-  let cumulative = 0;
-  let dominantIndex = 0;
-
-  for (let i = 0; i < weights.length; i++) {
-    cumulative += weights[i];
-    if (rand <= cumulative) {
-      dominantIndex = i;
-      break;
-    }
-  }
-
-  // Confidence emosi dominan: 60–98%
-  const dominantConfidence = parseFloat(
-    (Math.random() * 38 + 60).toFixed(1)
-  );
-
-  // Sisa persentase dibagi ke emosi lain secara random
-  const remaining = 100 - dominantConfidence;
-  const otherEmotions = ALL_EMOTIONS.filter((_, i) => i !== dominantIndex);
-  const rawRatios = otherEmotions.map(() => Math.random());
-  const totalRatio = rawRatios.reduce((a, b) => a + b, 0);
-  const otherScores = rawRatios.map((r, i) => ({
-    emotion: otherEmotions[i],
-    confidence: parseFloat(((r / totalRatio) * remaining).toFixed(1)),
-  }));
-
-  const scores: EmotionScore[] = [
-    { emotion: ALL_EMOTIONS[dominantIndex], confidence: dominantConfidence },
-    ...otherScores,
-  ];
-
-  // Sort descending by confidence
-  return scores.sort((a, b) => b.confidence - a.confidence);
+function mockScores(): EmotionScore[] {
+  const weights = [0.12, 0.12, 0.35, 0.18, 0.13, 0.10];
+  const r = Math.random();
+  let cum = 0, di = 0;
+  for (let i = 0; i < weights.length; i++) { cum += weights[i]; if (r <= cum) { di = i; break; } }
+  const dom = parseFloat((Math.random() * 30 + 60).toFixed(1));
+  const rest = ALL.filter((_, i) => i !== di).map(e => ({ emotion: e, confidence: 0 }));
+  const rem = 100 - dom;
+  const ratios = rest.map(() => Math.random());
+  const total = ratios.reduce((a, b) => a + b, 0);
+  rest.forEach((r, i) => { r.confidence = parseFloat(((ratios[i] / total) * rem).toFixed(1)); });
+  return [{ emotion: ALL[di], confidence: dom }, ...rest].sort((a, b) => b.confidence - a.confidence);
 }
 
-/**
- * Simulasikan deteksi emosi dengan delay (seperti model AI asli).
- */
-export async function mockDetectEmotion(
-  _imageBuffer?: Buffer
-): Promise<DetectionResult> {
-  // Simulasi processing time: 200–600ms
-  await new Promise((resolve) =>
-    setTimeout(resolve, Math.random() * 400 + 200)
-  );
-
-  const allEmotions = generateRealisticScores();
-  const dominant = allEmotions[0];
-
-  return {
-    dominantEmotion: dominant.emotion,
-    dominantConfidence: dominant.confidence,
-    allEmotions,
-    detectedAt: new Date(),
-  };
+export async function detectEmotion(imageBase64?: string): Promise<DetectionResult> {
+  // Coba hubungi AI Python service dulu
+  const aiUrl = process.env.AI_SERVICE_URL;
+  if (aiUrl && imageBase64) {
+    try {
+      const resp = await fetch(`${aiUrl}/predict`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ image: imageBase64 }),
+        signal: AbortSignal.timeout(5000),
+      });
+      if (resp.ok) {
+        const json = await resp.json() as { emotions: EmotionScore[] };
+        const sorted = json.emotions.sort((a, b) => b.confidence - a.confidence);
+        return {
+          dominantEmotion: sorted[0].emotion,
+          dominantConfidence: sorted[0].confidence,
+          allEmotions: sorted,
+          detectedAt: new Date(),
+        };
+      }
+    } catch {
+      console.log('AI service unavailable, using mock');
+    }
+  }
+  // Fallback: mock
+  await new Promise(r => setTimeout(r, 300 + Math.random() * 400));
+  const scores = mockScores();
+  return { dominantEmotion: scores[0].emotion, dominantConfidence: scores[0].confidence, allEmotions: scores, detectedAt: new Date() };
 }
