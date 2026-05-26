@@ -52,9 +52,7 @@ const Detection: React.FC = () => {
         setLastEntryId(entryId);
         setLimitInfo(dailyLimit);
       } else {
-        // HTTP 429 = limit tercapai
         setError(res.message || 'Deteksi gagal.');
-        // Refresh limit info
         apiGetDashboardStats().then(r => {
           if (r.success && r.data) setLimitInfo(r.data.dailyLimit as unknown as DailyLimitInfo);
         });
@@ -63,14 +61,21 @@ const Detection: React.FC = () => {
     finally { setDetecting(false); setTimeout(()=>setScanActive(false),600); }
   }, [detecting, captureFrame]);
 
-  const startCamera = useCallback(async () => {
+const startCamera = useCallback(async () => {
     setError('');
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ video:{ width:640, height:480, facingMode:'user' }, audio:false });
       streamRef.current = stream;
-      if (videoRef.current) { videoRef.current.srcObject=stream; await videoRef.current.play(); }
-      setIsRunning(true);
-    } catch { setError('Kamera tidak bisa diakses. Izinkan akses kamera di browser (klik ikon 🔒 di address bar).'); }
+      if (videoRef.current) { 
+        videoRef.current.srcObject = stream; 
+        await videoRef.current.play(); 
+      }
+      // Kembalikan ke sini agar elemen video langsung diset display: 'block' oleh React
+      setIsRunning(true); 
+    } catch (err) { 
+      console.error(err);
+      setError('Kamera tidak bisa diakses. Izinkan akses kamera di browser.'); 
+    }
   }, []);
 
   const stopCamera = useCallback(() => {
@@ -80,12 +85,18 @@ const Detection: React.FC = () => {
     setIsRunning(false);
   }, []);
 
+  // Fungsi penanganan ketika video sudah siap dirender
+  const handleVideoReady = useCallback(() => {
+    if (!isRunning) {
+      setIsRunning(true);
+    }
+  }, [isRunning]);
+
   useEffect(()=>()=>stopCamera(), [stopCamera]);
 
   const meta = dominantEmo ? EMOTION_META[dominantEmo] : null;
   const limitReached = limitInfo !== null && limitInfo.remaining <= 0;
 
-  // Format waktu reset
   const resetTime = limitInfo
     ? new Date(limitInfo.resetAt).toLocaleTimeString('id-ID', { hour:'2-digit', minute:'2-digit' })
     : '00:00';
@@ -139,8 +150,15 @@ const Detection: React.FC = () => {
       <div style={{ display:'grid', gridTemplateColumns:'1fr 320px', gap:20, alignItems:'start' }} className="grid-2">
         {/* Video */}
         <div style={{ background:'var(--bg-camera)', borderRadius:14, overflow:'hidden', position:'relative', minHeight:360 }}>
-          <video ref={videoRef} muted playsInline
-            style={{ width:'100%', display:isRunning?'block':'none', objectFit:'cover' }} />
+          {/* Penambahan onLoadedMetadata dan onCanPlay */}
+          <video 
+            ref={videoRef} 
+            muted 
+            playsInline
+            onLoadedMetadata={handleVideoReady}
+            onCanPlay={handleVideoReady}
+            style={{ width:'100%', display:isRunning?'block':'none', objectFit:'cover' }} 
+          />
           <canvas ref={canvasRef} style={{ display:'none' }} />
 
           {scanActive && (

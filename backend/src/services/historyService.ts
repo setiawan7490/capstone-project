@@ -59,8 +59,11 @@ export async function incrementScanCount(userId: string): Promise<void> {
 }
 
 export async function saveMoodEntry(
-  result: DetectionResult, userId: string,
-  source: 'camera'|'upload', imageUrl?: string,
+  result: DetectionResult,
+  userId: string,
+  source: 'camera' | 'upload',
+  imageUrl?: string,
+  imageGridFsId?: string,
 ) {
   return MoodEntry.create({
     userId,
@@ -70,6 +73,7 @@ export async function saveMoodEntry(
     detectedAt:         result.detectedAt,
     source,
     imageUrl,
+    imageGridFsId,
   });
 }
 
@@ -97,6 +101,32 @@ export async function getMoodEntryById(id: string, userId: string) {
 export async function deleteMoodEntry(id: string, userId: string) {
   // Hapus history TIDAK mengubah dailyScanCount
   return MoodEntry.findOneAndDelete({ _id:id, userId });
+}
+
+/**
+ * Ambil semua imageGridFsId yang akan terdampak bulk delete.
+ * Dipanggil SEBELUM menghapus dokumen dari collection MoodEntry,
+ * agar kita bisa hapus file dari GridFS setelahnya.
+ */
+export async function getBulkMoodEntryGridFsIds(
+  userId: string,
+  mode: 'all' | 'today' | 'week' | 'month' | 'ids',
+  ids?: string[],
+): Promise<string[]> {
+  const query: Record<string, unknown> = { userId, imageGridFsId: { $ne: null } };
+  if (mode === 'ids' && ids?.length) {
+    query._id = { $in: ids };
+  } else if (mode !== 'all') {
+    const now = new Date(), start = new Date();
+    if (mode === 'today')      start.setHours(0, 0, 0, 0);
+    else if (mode === 'week')  start.setDate(now.getDate() - 7);
+    else if (mode === 'month') start.setDate(now.getDate() - 30);
+    query.detectedAt = { $gte: start, $lte: now };
+  }
+  const entries = await MoodEntry.find(query).select('imageGridFsId');
+  return entries
+    .map(e => e.imageGridFsId)
+    .filter((id): id is string => typeof id === 'string' && id.length > 0);
 }
 
 export async function bulkDeleteMoodEntries(

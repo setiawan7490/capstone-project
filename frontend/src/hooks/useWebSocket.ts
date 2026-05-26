@@ -18,9 +18,9 @@ export function useWebSocket(options: Options) {
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       const host = window.location.hostname;
       // Di dev (port 5173) proxy ke backend port 5000, di production pakai port yang sama
-      const isDev = window.location.port === '5173';
-      const port = isDev ? '5000' : window.location.port;
-      const url = `${protocol}//${host}:${port}/ws`;
+      const isDev = import.meta.env.DEV;
+      const portStr = isDev ? ':5000' : (window.location.port ? `:${window.location.port}` : '');
+      const url = `${protocol}//${host}${portStr}/ws`;
 
       const ws = new WebSocket(url);
       wsRef.current = ws;

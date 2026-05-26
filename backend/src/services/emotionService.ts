@@ -1,58 +1,84 @@
 import { EmotionType, EmotionScore, DetectionResult } from '../types';
 
-const ALL: EmotionType[] = ['Angry', 'Fear', 'Happy', 'Sad', 'Surprise', 'Neutral'];
+const MIRAGE_URL = 'https://xkskhekd-mirage-api.hf.space';
 
-function mockScores(): EmotionScore[] {
-  const weights = [0.12, 0.12, 0.35, 0.18, 0.13, 0.10];
-  const r = Math.random();
-  let cum = 0, di = 0;
-  for (let i = 0; i < weights.length; i++) {
-    cum += weights[i];
-    if (r <= cum) { di = i; break; }
+/**
+ * Konversi base64 string → Buffer siap kirim sebagai file multipart.
+ * Prefix "data:image/jpeg;base64," dihapus jika ada.
+ */
+function base64ToBuffer(base64: string): { buffer: Buffer; mimeType: string } {
+  let mime = 'image/jpeg';
+  let data = base64;
+
+  if (base64.includes(',')) {
+    const [header, body] = base64.split(',', 2);
+    // Ambil mime dari header jika ada, contoh: "data:image/png;base64"
+    const mimeMatch = header.match(/data:([^;]+);/);
+    if (mimeMatch) mime = mimeMatch[1];
+    data = body;
   }
-  const dom = parseFloat((Math.random() * 30 + 60).toFixed(1));
-  const rest = ALL.filter((_, i) => i !== di).map(e => ({ emotion: e, confidence: 0 }));
-  const rem = 100 - dom;
-  const ratios = rest.map(() => Math.random());
-  const total = ratios.reduce((a, b) => a + b, 0);
-  rest.forEach((r, i) => { r.confidence = parseFloat(((ratios[i] / total) * rem).toFixed(1)); });
-  return [{ emotion: ALL[di], confidence: dom }, ...rest].sort((a, b) => b.confidence - a.confidence);
+
+  return { buffer: Buffer.from(data, 'base64'), mimeType: mime };
 }
 
+/**
+ * Kirim gambar ke MIRAGE API dan kembalikan DetectionResult.
+ * Jika gagal, lempar Error — tidak ada fallback mock.
+ */
 export async function detectEmotion(imageBase64?: string): Promise<DetectionResult> {
-  const aiUrl = process.env.AI_SERVICE_URL;
-
-  // Coba panggil AI Python service jika tersedia
-  if (aiUrl && imageBase64) {
-    try {
-      const resp = await fetch(`${aiUrl}/predict`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ image: imageBase64 }),
-        signal: AbortSignal.timeout(8000),
-      });
-      if (resp.ok) {
-        const json = await resp.json() as { emotions: EmotionScore[] };
-        const sorted = json.emotions.sort((a, b) => b.confidence - a.confidence);
-        return {
-          dominantEmotion:    sorted[0].emotion,
-          dominantConfidence: sorted[0].confidence,
-          allEmotions:        sorted,
-          detectedAt:         new Date(),
-        };
-      }
-    } catch {
-      console.log('[AI] Service tidak tersedia, pakai mock');
-    }
+  if (!imageBase64) {
+    throw new Error('Tidak ada gambar yang dikirim ke AI service.');
   }
 
-  // Fallback: mock
-  await new Promise(r => setTimeout(r, 300 + Math.random() * 400));
-  const scores = mockScores();
+  const { buffer, mimeType } = base64ToBuffer(imageBase64);
+
+  // Tentukan ekstensi file dari mime type
+  const ext = mimeType === 'image/png' ? 'png' : mimeType === 'image/webp' ? 'webp' : 'jpg';
+
+  // Buat FormData dengan file gambar
+  const form = new FormData();
+  const blob = new Blob([buffer], { type: mimeType });
+  form.append('file', blob, `capture.${ext}`);
+
+  let resp: Response;
+  try {
+    resp = await fetch(`${MIRAGE_URL}/predict`, {
+      method: 'POST',
+      headers: { accept: 'application/json' },
+      body: form,
+      signal: AbortSignal.timeout(15000), // 15 detik timeout
+    });
+  } catch (err) {
+    throw new Error(`Tidak bisa terhubung ke MIRAGE API: ${(err as Error).message}`);
+  }
+
+  if (!resp.ok) {
+    const text = await resp.text().catch(() => '');
+    throw new Error(`MIRAGE API error ${resp.status}: ${text}`);
+  }
+
+  // Response MIRAGE:
+  // { "emotion": "Happy", "confidence": 0.996, "confidence_pct": "99.60%",
+  //   "all_scores": { "Angry": 0, "Fear": 0, "Happy": 0.996, "Sad": 0, "Surprise": 0.004 } }
+  const json = await resp.json() as {
+    emotion: string;
+    confidence: number;
+    confidence_pct: string;
+    all_scores: Record<string, number>;
+  };
+
+  // Ubah all_scores object → array EmotionScore, urutkan descending
+  const allEmotions: EmotionScore[] = Object.entries(json.all_scores)
+    .map(([emotion, confidence]) => ({
+      emotion: emotion as EmotionType,
+      confidence: parseFloat((confidence * 100).toFixed(2)), // 0.996 → 99.60
+    }))
+    .sort((a, b) => b.confidence - a.confidence);
+
   return {
-    dominantEmotion:    scores[0].emotion,
-    dominantConfidence: scores[0].confidence,
-    allEmotions:        scores,
+    dominantEmotion:    json.emotion as EmotionType,
+    dominantConfidence: parseFloat((json.confidence * 100).toFixed(2)),
+    allEmotions,
     detectedAt:         new Date(),
   };
 }

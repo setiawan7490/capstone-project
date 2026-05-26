@@ -6,6 +6,7 @@ import ProtectedRoute from './components/ProtectedRoute';
 import Landing        from './pages/Landing';
 import Login          from './pages/Login';
 import Register       from './pages/Register';
+import Home           from './pages/Home';
 import Dashboard      from './pages/Dashboard';
 import Detection      from './pages/Detection';
 import Upload         from './pages/Upload';
@@ -25,6 +26,7 @@ const App: React.FC = () => (
 
           {/* Protected */}
           <Route path="/dashboard"          element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+          <Route path="/home"               element={<ProtectedRoute><Home /></ProtectedRoute>} />
           <Route path="/detection"          element={<ProtectedRoute><Detection /></ProtectedRoute>} />
           <Route path="/upload"             element={<ProtectedRoute><Upload /></ProtectedRoute>} />
           <Route path="/result/:id"         element={<ProtectedRoute><Result /></ProtectedRoute>} />
