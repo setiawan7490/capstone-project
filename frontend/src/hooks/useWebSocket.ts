@@ -7,6 +7,19 @@ interface Options {
   onHistoryUpdate?: (data: { action: string; id: string }) => void;
 }
 
+function getWsUrl(): string {
+  // Untuk production: gunakan VITE_WS_URL dari environment variable
+  const envWs = (import.meta as any).env?.VITE_WS_URL as string | undefined;
+  if (envWs) return envWs;
+
+  // Fallback untuk development lokal
+  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  const host = window.location.hostname;
+  const isDev = (import.meta as any).env?.DEV as boolean | undefined;
+  const portStr = isDev ? ':5000' : (window.location.port ? `:${window.location.port}` : '');
+  return `${protocol}//${host}${portStr}/ws`;
+}
+
 export function useWebSocket(options: Options) {
   const wsRef = useRef<WebSocket | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -15,13 +28,7 @@ export function useWebSocket(options: Options) {
 
   const connect = useCallback(() => {
     try {
-      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const host = window.location.hostname;
-      // Di dev (port 5173) proxy ke backend port 5000, di production pakai port yang sama
-      const isDev = import.meta.env.DEV;
-      const portStr = isDev ? ':5000' : (window.location.port ? `:${window.location.port}` : '');
-      const url = `${protocol}//${host}${portStr}/ws`;
-
+      const url = getWsUrl();
       const ws = new WebSocket(url);
       wsRef.current = ws;
 
