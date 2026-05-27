@@ -61,7 +61,7 @@ const Result: React.FC = () => {
 
         <div className="card" style={{ minHeight:280,display:'flex',alignItems:'center',justifyContent:'center',overflow:'hidden',background:'var(--bg)' }}>
           {entry.imageUrl
-            ? <img src={entry.imageUrl} alt="captured" style={{ width:'100%',maxHeight:320,objectFit:'cover' }} />
+            ? <img src={`${(import.meta as any).env?.VITE_API_URL?.replace('/api','') || ''}${entry.imageUrl}`} alt="captured" style={{ width:'100%',maxHeight:320,objectFit:'cover' }} />
             : <div style={{ border:`2px solid var(--brand)`,borderRadius:8,width:200,height:200,display:'flex',alignItems:'center',justifyContent:'center',color:'var(--text-3)',fontSize:14 }}>[ Captured Image ]</div>}
         </div>
       </div>
