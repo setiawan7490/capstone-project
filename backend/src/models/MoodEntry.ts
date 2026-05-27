@@ -3,13 +3,13 @@ import { EmotionType, EmotionScore } from '../types';
 
 export interface IMoodEntryDocument extends Document {
   userId: mongoose.Types.ObjectId;
+  imageUrl?: string;
+  imageGridFsId?: string;
   dominantEmotion: EmotionType;
   dominantConfidence: number;
   allEmotions: EmotionScore[];
   detectedAt: Date;
   source: 'camera' | 'upload';
-  imageUrl?: string;        // URL publik untuk frontend: /api/images/:gridfsId
-  imageGridFsId?: string;   // ObjectId GridFS — dipakai untuk delete & serve
   createdAt: Date;
 }
 
@@ -27,8 +27,6 @@ const MoodEntrySchema = new Schema<IMoodEntryDocument>({
   allEmotions:        { type: [EmotionScoreSchema], required: true },
   detectedAt:         { type: Date, default: Date.now },
   source:             { type: String, enum: ['camera', 'upload'], default: 'camera' },
-  imageUrl:           { type: String, default: null },
-  imageGridFsId:      { type: String, default: null },
 }, { timestamps: true, versionKey: false });
 
 MoodEntrySchema.index({ userId: 1, detectedAt: -1 });
