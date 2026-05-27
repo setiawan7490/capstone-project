@@ -37,7 +37,7 @@ export async function detectEmotion(imageBase64?: string): Promise<DetectionResu
 
   // Buat FormData dengan file gambar
   const form = new FormData();
-  const blob = new Blob([buffer], { type: mimeType });
+  const blob = new Blob([new Uint8Array(buffer)], { type: mimeType });
   form.append('file', blob, `capture.${ext}`);
 
   let resp: Response;
