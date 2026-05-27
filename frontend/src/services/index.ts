@@ -1,6 +1,6 @@
 import { ApiResponse, DashboardStats, MoodEntry, Pagination, DailyLimitInfo } from '../types';
 
-const BASE = '/api';
+const BASE = (import.meta as any).env?.VITE_API_URL || '/api';
 
 function getToken() { return localStorage.getItem('mood_token'); }
 
